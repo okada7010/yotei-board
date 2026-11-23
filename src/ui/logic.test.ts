@@ -3,6 +3,7 @@ import { areaOf, vehicleBars } from '../domain/derive';
 import { applyOps, type Op } from '../domain/ops';
 import type { BoardData, Kind, Member, Schedule } from '../domain/types';
 import { addGroup, addMember, addVehicle, canDeleteGroup, moveOrder } from './admin/adminActions';
+import { shouldAutoReload } from './app/autoReload';
 import { moveBar, resizeBar } from './board/barActions';
 import { dropMember } from './board/dropActions';
 import { memberRow, validateSchedule } from './input/gridModel';
@@ -105,6 +106,54 @@ describe('dropMember（名札のドロップ）', () => {
 
   it('存在しない人員は何もしない', () => {
     expect(dropMember(board(), 'ghost', '休み', D, 'dev')).toEqual({ noop: true });
+  });
+
+  it('重ねた「その日だけの休み」を現場欄へ戻すと、入力欄は開かず休みを取り消す', () => {
+    const trip = sched({ memberIds: ['m1', 'm2'], start: '2026-11-24', end: '2026-11-27', kind: '現場', site: 'A倉庫', vehicleId: 'v1' });
+    const data = board({ schedules: [trip] });
+    const overlaid = applyOps(data, opsOf(dropMember(data, 'm1', '休み', D, 'dev')));
+    const off = overlaid.schedules.find((s) => s.id !== trip.id)!;
+    const back = dropMember(overlaid, 'm1', '現場', D, 'dev');
+    expect(back).toEqual({ ops: [{ type: 'delete', collection: 'schedules', id: off.id }] });
+    const after = applyOps(overlaid, opsOf(back));
+    expect(after.schedules).toEqual([trip]);
+    expect(areaOf(after, after.members[0], D)).toBe('現場');
+  });
+
+  it('1人・1日だけの現場予定は、名札を動かしても消さない（現場名・車両を残して重ねる）', () => {
+    const visit = sched({ memberIds: ['m1'], start: D, end: D, kind: '現場', site: 'A倉庫', vehicleId: 'v1' });
+    const data = board({ schedules: [visit] });
+    const after = applyOps(data, opsOf(dropMember(data, 'm1', '休み', D, 'dev')));
+    expect(after.schedules.find((s) => s.id === visit.id)).toEqual(visit);
+    expect(after.schedules).toHaveLength(2);
+    expect(areaOf(after, after.members[0], D)).toBe('休み');
+  });
+});
+
+describe('shouldAutoReload（毎朝の自動読み直し）', () => {
+  const four = new Date(2026, 10, 24, 4, 0, 0).getTime();
+  const ok = { now: four + 60000, loadedAt: four - 3600000, online: true, status: 'ready' as const, pendingCount: 0, lastSyncAt: four + 30000 };
+
+  it('4時を過ぎ、通信が正常で保存待ちが無ければ読み直す', () => {
+    expect(shouldAutoReload(ok)).toBe(true);
+    expect(shouldAutoReload({ ...ok, status: 'busy' })).toBe(true);
+  });
+
+  it('4時より後に開いた画面は、その日は読み直さない', () => {
+    expect(shouldAutoReload({ ...ok, loadedAt: four + 1000 })).toBe(false);
+  });
+
+  it('4時前は読み直さない', () => {
+    expect(shouldAutoReload({ ...ok, now: four - 60000, lastSyncAt: four - 70000 })).toBe(false);
+  });
+
+  it('通信できないとき・同期が古いとき・保存待ちがあるときは読み直さない', () => {
+    expect(shouldAutoReload({ ...ok, online: false })).toBe(false);
+    expect(shouldAutoReload({ ...ok, status: 'offline' })).toBe(false);
+    expect(shouldAutoReload({ ...ok, status: 'rate-limited' })).toBe(false);
+    expect(shouldAutoReload({ ...ok, lastSyncAt: four - 600000 })).toBe(false);
+    expect(shouldAutoReload({ ...ok, lastSyncAt: null })).toBe(false);
+    expect(shouldAutoReload({ ...ok, pendingCount: 1 })).toBe(false);
   });
 });
 

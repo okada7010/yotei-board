@@ -25,6 +25,7 @@ export class FakeGitHub {
   overrides: { match?: string; method?: string; status: number; headers?: Record<string, string>; body?: unknown }[] = [];
   remaining = 4990;
   repoExists = true;
+  branches = ['main'];
   private seq = 0;
 
   constructor(private prefix = '/repos/acme/board-data') {}
@@ -65,6 +66,10 @@ export class FakeGitHub {
     if (headers.authorization !== 'Bearer good-token') return respond(401, { message: 'Bad credentials' });
     if (!this.repoExists || !path.startsWith(this.prefix)) return respond(404, { message: 'Not Found' });
     if (path === this.prefix) return respond(200, { full_name: 'acme/board-data' });
+    if (path.startsWith(`${this.prefix}/branches/`)) {
+      const name = decodeURIComponent(path.slice(`${this.prefix}/branches/`.length));
+      return this.branches.includes(name) ? respond(200, { name }) : respond(404, { message: 'Branch not found' });
+    }
 
     const filePath = decodeURIComponent(path.slice(`${this.prefix}/contents/`.length));
     const file = this.files.get(filePath);

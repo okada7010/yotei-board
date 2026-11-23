@@ -26,6 +26,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm run build
+      - name: 通信先の制限（CSP）が配信物に入っていることを確認
+        run: grep -q "Content-Security-Policy" dist/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

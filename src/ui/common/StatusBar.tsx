@@ -29,7 +29,7 @@ export function StatusBar() {
       tone = 'warn';
       break;
     case 'rate-limited':
-      label = `一時的に更新できません（${retryAt ? hhmm(retryAt) : '--:--'} に再開）`;
+      label = `一時的に更新できません（${retryAt ? hhmm(retryAt) : '--:--'} に再開）${pendingCount > 0 ? `・保存待ち ${pendingCount}件` : ''}`;
       tone = 'warn';
       break;
     case 'unauthorized':

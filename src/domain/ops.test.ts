@@ -8,6 +8,7 @@ import {
   mergeById,
   newId,
   parseBackup,
+  parseBackupFile,
   splitArchive,
   stamp,
   summarize,
@@ -127,5 +128,20 @@ describe('backup', () => {
     expect(() => parseBackup(JSON.stringify({ format: 'other', version: 1, data: emptyBoard() }))).toThrow(msg);
     expect(() => parseBackup(JSON.stringify({ format: 'yotei-board-backup', version: 1, data: { groups: [] } }))).toThrow(msg);
     expect(() => parseBackup(JSON.stringify({ format: 'yotei-board-backup', version: 2, data: emptyBoard() }))).toThrow(msg);
+  });
+
+  it('項目の欠けたレコードを含むバックアップは読み込まない', () => {
+    const bad = { format: 'yotei-board-backup', version: 1, exportedAt: 'x', data: { ...emptyBoard(), schedules: [{ id: 's1' }] } };
+    expect(() => parseBackup(JSON.stringify(bad))).toThrow('バックアップファイルの形式が正しくありません');
+  });
+
+  it('過去の記録（年別）も一緒に書き出し、読み戻せる', () => {
+    const data: BoardData = { ...emptyBoard(), groups: [group('g1', '第一')] };
+    const archive = { '2025': [sched('old1', '2025-05-01')], '2026': [sched('old2', '2026-02-01')] };
+    const json = JSON.stringify(makeBackup(data, new Date('2026-11-23T00:00:00.000Z'), archive));
+    const parsed = parseBackupFile(json);
+    expect(parsed.data).toEqual(data);
+    expect(parsed.archive).toEqual(archive);
+    expect(parseBackupFile(JSON.stringify(makeBackup(data))).archive).toEqual({});
   });
 });

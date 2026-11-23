@@ -80,17 +80,6 @@ export function MobilePage({ navigate }: { navigate: (p: Route) => void }) {
       </section>
 
       <section className="m-card">
-        <h2>現場</h2>
-        {sites.length === 0 && <p className="empty">現場に出ている人はいません</p>}
-        {sites.map((s) => (
-          <div key={s.site} className="m-area">
-            <span className="m-site">{s.site}</span>
-            <div className="tags">{s.members.map(tag)}</div>
-          </div>
-        ))}
-      </section>
-
-      <section className="m-card">
         <h2>車両</h2>
         {vehicles.map((v) => {
           const bars = vehicleBars(data, v.id, date, date);
@@ -109,6 +98,17 @@ export function MobilePage({ navigate }: { navigate: (p: Route) => void }) {
           );
         })}
         {vehicles.length === 0 && <p className="empty">車両がありません</p>}
+      </section>
+
+      <section className="m-card">
+        <h2>現場</h2>
+        {sites.length === 0 && <p className="empty">現場に出ている人はいません</p>}
+        {sites.map((s) => (
+          <div key={s.site} className="m-area">
+            <span className="m-site">{s.site}</span>
+            <div className="tags">{s.members.map(tag)}</div>
+          </div>
+        ))}
       </section>
 
       {notes('トラブル')}

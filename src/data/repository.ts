@@ -1,4 +1,5 @@
-import type { FileKey } from '../domain/ops';
+import type { Collection, FileKey } from '../domain/ops';
+import { isRecordList } from '../domain/validate';
 import type { BoardData, Group, Member, Note, Schedule, Vehicle } from '../domain/types';
 
 export interface MasterFile {
@@ -107,9 +108,6 @@ export function fileFromBoard<K extends FileKey>(key: K, data: BoardData): FileM
   return files[key];
 }
 
-function isRecordList(v: unknown): boolean {
-  return Array.isArray(v) && v.every((r) => typeof r === 'object' && r !== null && typeof (r as { id?: unknown }).id === 'string');
-}
 
 /** 読み込んだ JSON がそのファイルとして正しい形かを確かめる。違えば corrupt */
 export function validateFile<K extends FileKey>(key: K, value: unknown): FileMap[K] {
@@ -117,18 +115,18 @@ export function validateFile<K extends FileKey>(key: K, value: unknown): FileMap
   if (typeof value !== 'object' || value === null) throw bad();
   const o = value as Record<string, unknown>;
   if (o.version !== 1) throw bad();
-  const fields: Record<FileKey, string[]> = {
+  const fields: Record<FileKey, Collection[]> = {
     master: ['groups', 'members', 'vehicles'],
     schedules: ['schedules'],
     notes: ['notes'],
   };
-  if (!fields[key].every((f) => isRecordList(o[f]))) throw bad();
+  if (!fields[key].every((f) => isRecordList(f, o[f]))) throw bad();
   return value as FileMap[K];
 }
 
 export function validateArchive(value: unknown): Schedule[] {
   if (typeof value !== 'object' || value === null) throw new RepoError('corrupt', '過去の記録ファイルの形式が正しくありません');
   const o = value as Record<string, unknown>;
-  if (o.version !== 1 || !isRecordList(o.schedules)) throw new RepoError('corrupt', '過去の記録ファイルの形式が正しくありません');
+  if (o.version !== 1 || !isRecordList('schedules', o.schedules)) throw new RepoError('corrupt', '過去の記録ファイルの形式が正しくありません');
   return o.schedules as Schedule[];
 }

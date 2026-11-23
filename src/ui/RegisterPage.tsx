@@ -19,10 +19,14 @@ interface Props {
   invalidKey?: boolean;
   /** 登録済みの端末から開いたとき（戻れる） */
   onBack?: () => void;
+  /** 画面を読み込み直さずに接続し直すとき（保存待ちの操作を残すため） */
+  onRegistered?: (reg: Registration) => Promise<void> | void;
+  /** 保存待ちの操作の数（鍵が無効になって戻ってきたとき） */
+  pendingCount?: number;
 }
 
 /** 端末登録画面：登録コードと端末名を入れると、この端末でボードが見られるようになる */
-export function RegisterPage({ invalidKey, onBack }: Props) {
+export function RegisterPage({ invalidKey, onBack, onRegistered, pendingCount = 0 }: Props) {
   const [code, setCode] = useState('');
   const [name, setName] = useState(deviceName());
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +54,12 @@ export function RegisterPage({ invalidKey, onBack }: Props) {
       saveRegistration(reg);
       setDeviceName(name);
       localStorage.removeItem(DEMO_KEY);
-      window.location.reload();
+      if (onRegistered) {
+        await onRegistered(reg);
+        setBusy(false);
+      } else {
+        window.location.reload();
+      }
     } catch (e) {
       const err = e instanceof RepoError ? e : null;
       if (err?.code === 'unauthorized') setError('この登録コードの鍵は使えません（期限切れ、または作り直されています）');
@@ -79,6 +88,9 @@ export function RegisterPage({ invalidKey, onBack }: Props) {
         <h1>行動予定ボード</h1>
         <h2>この端末を登録</h2>
         {invalidKey && <p className="form-error">鍵が無効です。新しい登録コードを入力してください。</p>}
+        {invalidKey && pendingCount > 0 && (
+          <p className="hint">保存待ちの変更が {pendingCount}件あります。この画面を閉じずに登録し直すと、そのまま保存されます。</p>
+        )}
         <p className="hint">管理者から受け取った登録コードを入力してください。登録は端末ごとに1回だけです。</p>
 
         <label className="field">

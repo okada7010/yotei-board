@@ -24,12 +24,17 @@ export interface StoreState {
   /** 回数制限からの再開時刻（ms） */
   retryAt: number | null;
   error: string | null;
+  /** データを読み込めていない／壊れている間は true（編集を受け付けない） */
+  readOnly: boolean;
 }
 
 export const SAVE_IDLE_MS = 5000;
 export const SAVE_MAX_MS = 20000;
 const BACKOFF_START_MS = 5000;
 const BACKOFF_MAX_MS = 60000;
+/** 回数制限に当たったときの最低待ち時間。続けて当たるたびに倍にする */
+const RATE_WAIT_START_MS = 60000;
+const RATE_WAIT_MAX_MS = 600000;
 
 /** 残りの通信回数に応じた問い合わせ間隔 */
 export function pollInterval(remaining: number | null): number {
@@ -53,7 +58,7 @@ export class SyncStore {
   private snapshot: Snapshot | null = null;
   private queue: Pending[] = [];
   private listeners = new Set<() => void>();
-  private state: StoreState = { data: emptyBoard(), status: 'loading', lastSyncAt: null, pendingCount: 0, retryAt: null, error: null };
+  private state: StoreState = { data: emptyBoard(), status: 'loading', lastSyncAt: null, pendingCount: 0, retryAt: null, error: null, readOnly: true };
   private chain: Promise<unknown> = Promise.resolve();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -66,6 +71,7 @@ export class SyncStore {
   private blocked: Extract<SyncStatus, 'offline' | 'rate-limited' | 'unauthorized' | 'corrupt'> | null = null;
   private retryAt: number | null = null;
   private backoff = BACKOFF_START_MS;
+  private rateWait = RATE_WAIT_START_MS;
   private error: string | null = null;
   private lastSyncAt: number | null = null;
 
@@ -101,6 +107,24 @@ export class SyncStore {
     }
   }
 
+  /**
+   * 保存先をつなぎ直す（鍵を登録し直したとき）。
+   * 保存待ちの操作は捨てず、新しい接続で読み直したあとに保存する。
+   */
+  async reconnect(repo: Repository): Promise<void> {
+    for (const t of [this.saveTimer, this.pollTimer, this.startTimer]) if (t !== null) clearTimeout(t);
+    this.saveTimer = this.pollTimer = this.startTimer = null;
+    this.repo = repo;
+    this.clearBlock();
+    this.emit();
+    await this.start();
+  }
+
+  /** 過去の記録（年別ファイル）へ追記する（バックアップから戻すとき） */
+  appendArchive(year: string, records: Schedule[]): Promise<void> {
+    return this.exclusive(() => this.repo.appendArchive(year, records, `[${this.device}] 過去の記録を復元 ${records.length}件`));
+  }
+
   stop(): void {
     this.stopped = true;
     for (const t of [this.saveTimer, this.pollTimer, this.startTimer]) if (t !== null) clearTimeout(t);
@@ -109,7 +133,7 @@ export class SyncStore {
 
   /** 操作を即座に画面へ反映し、保存待ちに入れる */
   dispatch(...ops: Op[]): void {
-    if (ops.length === 0) return;
+    if (ops.length === 0 || this.readOnly()) return;
     for (const op of ops) this.queue.push({ op, files: new Set(filesOf(op)) });
     if (this.firstPendingAt === null) this.firstPendingAt = Date.now();
     this.emit();
@@ -154,6 +178,16 @@ export class SyncStore {
     return this.blocked === 'unauthorized' || this.blocked === 'corrupt';
   }
 
+  /** データを読み込めていない／壊れている間は編集させない（空のデータで上書きしないため） */
+  private readOnly(): boolean {
+    return this.snapshot === null || this.blocked === 'corrupt';
+  }
+
+  /** 回数制限の待ち時間中か */
+  private rateBlocked(): boolean {
+    return this.blocked === 'rate-limited' && this.retryAt !== null && Date.now() < this.retryAt;
+  }
+
   private waitMs(): number {
     if (this.blocked === 'rate-limited' && this.retryAt !== null) return Math.max(0, this.retryAt - Date.now()) + 50;
     return this.backoff;
@@ -164,16 +198,20 @@ export class SyncStore {
     this.retryAt = null;
     this.error = null;
     this.backoff = BACKOFF_START_MS;
+    this.rateWait = RATE_WAIT_START_MS;
   }
 
   private handleError(e: unknown): void {
     const err = e instanceof RepoError ? e : new RepoError('network', e instanceof Error ? e.message : String(e));
     this.error = err.message;
-    if (err.code === 'unauthorized') this.blocked = 'unauthorized';
+    // リポジトリに届かない（not-found）のは、鍵の対象が変わった場合なので鍵の問題として扱う
+    if (err.code === 'unauthorized' || err.code === 'not-found') this.blocked = 'unauthorized';
     else if (err.code === 'corrupt') this.blocked = 'corrupt';
     else if (err.code === 'rate-limited') {
+      // 端末の時計がずれていても連打しないよう、最低待ち時間を設け、続けて当たるたびに倍にする
       this.blocked = 'rate-limited';
-      this.retryAt = err.retryAt ?? Date.now() + 60000;
+      this.retryAt = Math.max(err.retryAt ?? 0, Date.now() + this.rateWait);
+      this.rateWait = Math.min(this.rateWait * 2, RATE_WAIT_MAX_MS);
     } else {
       if (this.blocked === 'offline') this.backoff = Math.min(this.backoff * 2, BACKOFF_MAX_MS);
       this.blocked = 'offline';
@@ -199,6 +237,7 @@ export class SyncStore {
       pendingCount: this.queue.length,
       retryAt: this.blocked === 'rate-limited' ? this.retryAt : null,
       error: this.error,
+      readOnly: this.readOnly(),
     };
     this.listeners.forEach((fn) => fn());
   }
@@ -218,6 +257,10 @@ export class SyncStore {
 
   private async save(): Promise<void> {
     if (this.stopped || this.halted() || this.saving || !this.snapshot || this.queue.length === 0) return;
+    if (this.rateBlocked()) {
+      this.scheduleSave();
+      return;
+    }
     this.saving = true;
     this.emit();
     const batch = [...this.queue];
@@ -257,6 +300,10 @@ export class SyncStore {
 
   private async poll(): Promise<void> {
     if (this.stopped || this.halted() || !this.snapshot || !this.visible) return;
+    if (this.rateBlocked()) {
+      this.schedulePoll();
+      return;
+    }
     try {
       await this.exclusive(async () => {
         const next = await this.repo.poll(this.snapshot!);

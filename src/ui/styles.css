@@ -100,6 +100,11 @@ input[type='checkbox'] { width: 1.2em; height: 1.2em; min-height: 0; }
 .badge-bad { background: var(--red-bg); color: #991b1b; }
 .badge-demo { background: #ede9fe; color: #4c1d95; }
 
+.ro-banner {
+  position: fixed; top: 0.5rem; left: 50%; transform: translateX(-50%); z-index: 60; max-width: calc(100% - 1rem);
+  background: #991b1b; color: #fff; padding: 0.6em 1.2em; border-radius: 0.6em; font-weight: 700; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); text-align: center;
+}
+
 /* ---------- 名札・車両札 ---------- */
 .tags { display: flex; flex-wrap: wrap; gap: 0.3em; align-content: flex-start; min-width: 0; }
 .tag {

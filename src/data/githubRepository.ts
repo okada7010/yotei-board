@@ -90,6 +90,11 @@ export class GitHubRepository implements Repository {
       if (retryAfter !== null) throw new RepoError('rate-limited', '通信回数の制限中です', Date.now() + Number(retryAfter) * 1000);
       if (remaining === '0') throw new RepoError('rate-limited', '通信回数の制限中です', reset !== null ? Number(reset) * 1000 : Date.now() + 60000);
       if (res.status === 429) throw new RepoError('rate-limited', '通信回数の制限中です', Date.now() + 60000);
+      // 二次制限はヘッダー無しの 403 で返ることがある（公式資料：1分以上待つ）。文面で見分ける
+      const body = (await res.clone().json().catch(() => null)) as { message?: unknown } | null;
+      if (typeof body?.message === 'string' && /rate limit|abuse/i.test(body.message)) {
+        throw new RepoError('rate-limited', '通信回数の制限中です', Date.now() + 60000);
+      }
       throw new RepoError('unauthorized', '鍵の権限が不足しています');
     }
     if (res.status >= 500) throw new RepoError('network', `GitHub が一時的に応答できません（${res.status}）`);
@@ -150,6 +155,16 @@ export class GitHubRepository implements Repository {
     const res = await this.request('GET', this.repoUrl());
     if (res.status === 404) throw new RepoError('not-found', 'データ用リポジトリが見つかりません（名前か鍵の対象を確認してください）');
     if (!res.ok) throw new RepoError('network', `確認に失敗しました（${res.status}）`);
+    const branch = await this.request('GET', `${this.repoUrl()}/branches/${encodeURIComponent(this.reg.branch)}`);
+    if (branch.status === 404) throw new RepoError('not-found', `ブランチ「${this.reg.branch}」が見つかりません（登録コードのブランチ名を確認してください）`);
+    if (!branch.ok) throw new RepoError('network', `確認に失敗しました（${branch.status}）`);
+  }
+
+  /** 読めていたファイルが無くなった場合は、空データ扱いにせずエラーにする（空で上書きしないため） */
+  private guardMissing<K extends FileKey>(key: K, prevVersion: string | null, got: FileState<FileMap[K]>): void {
+    if (prevVersion !== null && got.version === null) {
+      throw new RepoError('corrupt', `データファイル（${key}）が見つかりません`);
+    }
   }
 
   async load(): Promise<Snapshot> {
@@ -165,6 +180,7 @@ export class GitHubRepository implements Repository {
     for (const key of FILE_KEYS) {
       const got = await this.getFile(key, prev[key].etag ?? null);
       if (got === 'same') continue;
+      this.guardMissing(key, prev[key].version, got);
       if (got.version === prev[key].version) {
         // 内容は同じで ETag だけ分かった場合：ETag を覚えるだけで「変更なし」
         prev[key].etag = got.etag;
@@ -185,7 +201,8 @@ export class GitHubRepository implements Repository {
         return { ...cur, [key]: { data: content, version: result.sha, etag: null } } as Snapshot;
       }
       // 他の端末が先に保存した：最新を読み直してやり直す（壊れていれば corrupt を投げ、上書きしない）
-      const latest = await this.getFile(key);
+      const latest = (await this.getFile(key)) as FileState<FileMap[typeof key]>;
+      this.guardMissing(key, cur[key].version, latest);
       cur = { ...cur, [key]: latest } as Snapshot;
     }
     throw new RepoError('conflict', '他の端末の変更と重なり、保存できませんでした');

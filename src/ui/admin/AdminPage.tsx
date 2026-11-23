@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toDateStr } from '../../domain/dates';
-import { makeBackup, parseBackup, stamp, type AnyRecord, type Collection, type Op } from '../../domain/ops';
+import { makeBackup, parseBackupFile, stamp, type AnyRecord, type ArchiveMap, type Collection, type Op } from '../../domain/ops';
 import { BASES, type Base, type BoardData, type Member } from '../../domain/types';
 import { deviceName, encodeRegistration, loadRegistration, saveRegistration, setDeviceName } from '../../data/registration';
 import { LocalRepository } from '../../data/localRepository';
@@ -245,8 +245,11 @@ function VehiclesTab() {
   );
 }
 
-function downloadBackup(data: BoardData): void {
-  const blob = new Blob([JSON.stringify(makeBackup(data), null, 1)], { type: 'application/json' });
+/** 過去の記録を探す年数（今年を含めて何年さかのぼるか） */
+const ARCHIVE_YEARS = 6;
+
+function downloadBackup(data: BoardData, archive: ArchiveMap): void {
+  const blob = new Blob([JSON.stringify(makeBackup(data, new Date(), archive), null, 1)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -256,12 +259,14 @@ function downloadBackup(data: BoardData): void {
 }
 
 function DeviceTab() {
-  const { data, dispatch, mode, store, pendingCount } = useBoard();
+  const { data, dispatch, mode, store, pendingCount, readOnly } = useBoard();
   const [name, setName] = useState(deviceName());
   const [saved, setSaved] = useState(false);
   const [showCode, setShowCode] = useState(false);
-  const [restore, setRestore] = useState<BoardData | null>(null);
+  const [restore, setRestore] = useState<{ data: BoardData; archive: ArchiveMap } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  const [confirmUnregister, setConfirmUnregister] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const reg = mode === 'github' ? loadRegistration() : null;
   const code = reg ? encodeRegistration(reg) : null;
@@ -277,11 +282,48 @@ function DeviceTab() {
     setError(null);
     if (!file) return;
     try {
-      setRestore(parseBackup(await file.text()));
+      setRestore(parseBackupFile(await file.text()));
     } catch (e) {
       setError((e as Error).message);
     }
     if (fileRef.current) fileRef.current.value = '';
+  };
+
+  /** 全データ＋過去の記録（年別）を1つのファイルに書き出す */
+  const exportAll = async () => {
+    setError(null);
+    setWorking(true);
+    try {
+      const archive: ArchiveMap = {};
+      const thisYear = new Date().getFullYear();
+      for (let y = thisYear; y > thisYear - ARCHIVE_YEARS; y--) {
+        const list = await store.loadArchive(String(y));
+        if (list.length > 0) archive[String(y)] = list;
+      }
+      downloadBackup(data, archive);
+    } catch {
+      setError('過去の記録を読み込めなかったため、書き出しを中止しました。通信環境を確認してやり直してください。');
+    }
+    setWorking(false);
+  };
+
+  /** バックアップの内容で置き換える（過去の記録は追記） */
+  const applyRestore = async () => {
+    if (!restore) return;
+    setError(null);
+    setWorking(true);
+    try {
+      for (const [year, list] of Object.entries(restore.archive)) {
+        if (list.length > 0) await store.appendArchive(year, list);
+      }
+      const op: Op = { type: 'replaceAll', data: restore.data };
+      dispatch(op);
+      setRestore(null);
+    } catch {
+      setError('過去の記録を保存できなかったため、置き換えを中止しました。通信環境を確認してやり直してください。');
+      setRestore(null);
+    }
+    setWorking(false);
   };
 
   const unregister = async () => {
@@ -332,12 +374,12 @@ function DeviceTab() {
 
       <section className="admin-group">
         <h3>バックアップ</h3>
-        <p className="hint">全データを1つのファイルに書き出します。月1回程度の書き出しをおすすめします。</p>
+        <p className="hint">全データ（過去の記録を含む）を1つのファイルに書き出します。月1回程度の書き出しをおすすめします。</p>
         <div className="add-row">
-          <button type="button" className="btn" onClick={() => downloadBackup(data)}>
-            バックアップを書き出す
+          <button type="button" className="btn" disabled={readOnly || working} onClick={() => void exportAll()}>
+            {working ? '処理中…' : 'バックアップを書き出す'}
           </button>
-          <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
+          <button type="button" className="btn" disabled={readOnly || working} onClick={() => fileRef.current?.click()}>
             バックアップから戻す…
           </button>
           <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
@@ -349,7 +391,7 @@ function DeviceTab() {
         <h3>登録の解除</h3>
         <p className="hint">この端末から鍵を消し、端末登録画面に戻します。{mode === 'local' && 'お試しモードを終了します（お試しデータは残ります）。'}</p>
         <div className="add-row">
-          <button type="button" className="btn btn-danger" onClick={() => void unregister()}>
+          <button type="button" className="btn btn-danger" onClick={() => setConfirmUnregister(true)}>
             {mode === 'local' ? 'お試しモードを終了' : 'この端末の登録を解除'}
           </button>
           {mode === 'local' && (
@@ -368,6 +410,31 @@ function DeviceTab() {
         {pendingCount > 0 && <p className="hint">保存待ちの変更は、解除の前に保存を試みます。</p>}
       </section>
 
+      {confirmUnregister && (
+        <Dialog
+          title={mode === 'local' ? 'お試しモードを終了' : 'この端末の登録を解除'}
+          onClose={() => setConfirmUnregister(false)}
+          footer={
+            <>
+              <span className="spacer" />
+              <button type="button" className="btn" onClick={() => setConfirmUnregister(false)}>
+                やめる
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => void unregister()}>
+                {mode === 'local' ? '終了する' : '解除する'}
+              </button>
+            </>
+          }
+        >
+          {mode === 'local' ? (
+            <p>お試しモードを終了し、端末登録画面に戻ります。</p>
+          ) : (
+            <p>この端末から鍵を消します。もう一度使うには、登録コードの入力が必要です。</p>
+          )}
+          {pendingCount > 0 && <p className="form-error">保存待ちの変更が {pendingCount}件あります。保存できなかった分は失われます。</p>}
+        </Dialog>
+      )}
+
       {restore && (
         <Dialog
           title="バックアップから戻す"
@@ -378,23 +445,16 @@ function DeviceTab() {
               <button type="button" className="btn" onClick={() => setRestore(null)}>
                 やめる
               </button>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => {
-                  const op: Op = { type: 'replaceAll', data: restore };
-                  dispatch(op);
-                  setRestore(null);
-                }}
-              >
-                置き換える
+              <button type="button" className="btn btn-danger" disabled={working} onClick={() => void applyRestore()}>
+                {working ? '処理中…' : '置き換える'}
               </button>
             </>
           }
         >
           <p>現在のデータをすべて、バックアップの内容に置き換えます。</p>
           <p className="hint">
-            バックアップの内容：人員 {restore.members.length}名／車両 {restore.vehicles.length}台／予定 {restore.schedules.length}件／掲示 {restore.notes.length}件
+            バックアップの内容：人員 {restore.data.members.length}名／車両 {restore.data.vehicles.length}台／予定 {restore.data.schedules.length}件／掲示 {restore.data.notes.length}件／過去の記録{' '}
+            {Object.values(restore.archive).reduce((n, list) => n + list.length, 0)}件
           </p>
           <p className="form-error">全員の画面に反映されます。この操作は取り消せません（GitHub の変更履歴からは戻せます）。</p>
         </Dialog>

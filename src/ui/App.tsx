@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { GitHubRepository } from '../data/githubRepository';
 import { LocalRepository } from '../data/localRepository';
 import { deviceName, loadRegistration } from '../data/registration';
 import { SyncStore } from '../data/store';
 import { AdminPage } from './admin/AdminPage';
 import { BoardProvider, useBoard } from './app/AppContext';
+import { shouldAutoReload } from './app/autoReload';
 import { BoardPage } from './board/BoardPage';
 import { InputPage } from './input/InputPage';
 import { MobilePage } from './mobile/MobilePage';
@@ -49,6 +50,31 @@ function useSession(): Session | null {
   return session;
 }
 
+/** 想定外のエラーで画面が真っ白になるのを防ぐ */
+export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  render(): ReactNode {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="page register">
+        <div className="card">
+          <h1>行動予定ボード</h1>
+          <p className="form-error">画面を表示できませんでした。</p>
+          <p className="hint">読み込み直しても直らない場合は、管理担当者に連絡してください。</p>
+          <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
+            読み込み直す
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
+
 export function App() {
   const hasConfig = loadRegistration() !== null || localStorage.getItem(DEMO_KEY) === '1';
   const session = useSession();
@@ -65,13 +91,38 @@ export function App() {
 function Pages() {
   const { path, navigate } = useRoute();
   const narrow = useNarrow();
-  const { status } = useBoard();
-  if (status === 'unauthorized') return <RegisterPage invalidKey />;
+  const { status, store, pendingCount } = useBoard();
+  if (status === 'unauthorized') {
+    // 鍵を登録し直しても、保存待ちの操作は捨てずに新しい接続で保存する
+    return <RegisterPage invalidKey pendingCount={pendingCount} onRegistered={(reg) => store.reconnect(new GitHubRepository(reg))} />;
+  }
   if (path === '/register') return <RegisterPage onBack={() => navigate('/board')} />;
-  if (path === '/admin') return <AdminPage navigate={navigate} />;
-  if (narrow) return <MobilePage navigate={navigate} />;
-  if (path === '/input') return <InputPage navigate={navigate} />;
-  return <BoardPage navigate={navigate} />;
+  let page: ReactNode;
+  if (path === '/admin') page = <AdminPage navigate={navigate} />;
+  else if (narrow) page = <MobilePage navigate={navigate} />;
+  else if (path === '/input') page = <InputPage navigate={navigate} />;
+  else page = <BoardPage navigate={navigate} />;
+  return (
+    <>
+      <ReadOnlyBanner />
+      {page}
+    </>
+  );
+}
+
+/** データを読み込めていない間は編集できないことを、全画面で知らせる */
+function ReadOnlyBanner() {
+  const { readOnly, status } = useBoard();
+  if (!readOnly || status === 'loading') return null;
+  const text =
+    status === 'corrupt'
+      ? 'データファイルを読み込めないため、編集できません。管理担当者に連絡してください。'
+      : 'データを読み込めていません。通信が戻るまで編集できません。';
+  return (
+    <div className="ro-banner" role="alert">
+      {text}
+    </div>
+  );
 }
 
 /** 画面の表示状態の連携、閉じる前の警告、毎朝の自動読み直し */
@@ -101,9 +152,8 @@ function Housekeeping() {
   useEffect(() => {
     const loadedAt = Date.now();
     const id = setInterval(() => {
-      const four = new Date();
-      four.setHours(4, 0, 0, 0);
-      if (Date.now() >= four.getTime() && loadedAt < four.getTime() && store.getState().pendingCount === 0) {
+      const s = store.getState();
+      if (shouldAutoReload({ now: Date.now(), loadedAt, online: navigator.onLine, status: s.status, pendingCount: s.pendingCount, lastSyncAt: s.lastSyncAt })) {
         window.location.reload();
       }
     }, 60000);

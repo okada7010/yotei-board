@@ -170,3 +170,59 @@ describe('GitHubRepository', () => {
     expect(gh.files.has('data/archive/schedules-2026.json')).toBe(true);
   });
 });
+
+describe('GitHubRepository（最終レビューの指摘）', () => {
+  let gh: FakeGitHub;
+  let repo: GitHubRepository;
+  const seedFiles = () => {
+    gh.put('data/master.json', JSON.stringify({ version: 1, groups: [], members: [], vehicles: [] }));
+    gh.put('data/schedules.json', JSON.stringify({ version: 1, schedules: [] }));
+    gh.put('data/notes.json', JSON.stringify({ version: 1, notes: [] }));
+  };
+
+  beforeEach(() => {
+    gh = new FakeGitHub();
+    repo = new GitHubRepository(reg, gh.fetch);
+  });
+
+  it('ヘッダーの無い 403 でも、回数制限の文面なら rate-limited として1分以上待つ', async () => {
+    gh.overrides.push({ status: 403, body: { message: 'You have exceeded a secondary rate limit. Please wait a few minutes before you try again.' } });
+    const before = Date.now();
+    try {
+      await repo.load();
+      throw new Error('should fail');
+    } catch (e) {
+      expect((e as RepoError).code).toBe('rate-limited');
+      expect((e as RepoError).retryAt).toBeGreaterThanOrEqual(before + 60000);
+    }
+  });
+
+  it('権限不足の 403 は unauthorized', async () => {
+    gh.overrides.push({ status: 403, body: { message: 'Resource not accessible by personal access token' } });
+    expect(await codeOf(repo.load())).toBe('unauthorized');
+  });
+
+  it('読めていたファイルが見つからなくなったら、空データ扱いにせず corrupt にする', async () => {
+    seedFiles();
+    const s0 = await repo.load();
+    gh.files.delete('data/notes.json');
+    expect(await codeOf(repo.poll(s0))).toBe('corrupt');
+    expect(await codeOf(repo.write('notes', s0, addNote(note('x', 'x')), 'm'))).toBe('corrupt');
+    expect(gh.files.has('data/notes.json')).toBe(false);
+  });
+
+  it('verify：ブランチが無ければ not-found', async () => {
+    gh.branches = ['master'];
+    expect(await codeOf(repo.verify())).toBe('not-found');
+  });
+
+  it('項目の欠けた予定・未知の種別があるファイルは corrupt にする', async () => {
+    seedFiles();
+    gh.put('data/schedules.json', JSON.stringify({ version: 1, schedules: [{ id: 's1', start: '2026-11-24', end: '2026-11-24', kind: '休み' }] }));
+    expect(await codeOf(repo.load())).toBe('corrupt');
+    gh.put('data/schedules.json', JSON.stringify({ version: 1, schedules: [{ ...sched('s1'), kind: '出張' }] }));
+    expect(await codeOf(repo.load())).toBe('corrupt');
+    gh.put('data/schedules.json', JSON.stringify({ version: 1, schedules: [sched('s1')] }));
+    expect(toBoard(await repo.load()).schedules).toHaveLength(1);
+  });
+});

@@ -1,5 +1,6 @@
 import { addDays, isValidDateStr } from './dates';
 import type { BoardData, DateStr, Group, Member, Note, Schedule, Vehicle } from './types';
+import { isRecordList } from './validate';
 
 export type Collection = 'groups' | 'members' | 'vehicles' | 'schedules' | 'notes';
 export type FileKey = 'master' | 'schedules' | 'notes';
@@ -119,15 +120,19 @@ export function mergeById<T extends { id: string }>(a: T[], b: T[]): T[] {
   return out;
 }
 
+/** 過去の記録（終了から60日を過ぎた予定）。キーは年 */
+export type ArchiveMap = Record<string, Schedule[]>;
+
 export interface Backup {
   format: 'yotei-board-backup';
   version: 1;
   exportedAt: string;
   data: BoardData;
+  archive?: ArchiveMap;
 }
 
-export function makeBackup(data: BoardData, now: Date = new Date()): Backup {
-  return { format: 'yotei-board-backup', version: 1, exportedAt: now.toISOString(), data };
+export function makeBackup(data: BoardData, now: Date = new Date(), archive: ArchiveMap = {}): Backup {
+  return { format: 'yotei-board-backup', version: 1, exportedAt: now.toISOString(), data, archive };
 }
 
 const COLLECTIONS: Collection[] = ['groups', 'members', 'vehicles', 'schedules', 'notes'];
@@ -135,12 +140,16 @@ const COLLECTIONS: Collection[] = ['groups', 'members', 'vehicles', 'schedules',
 export function isBoardData(v: unknown): v is BoardData {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
-  return COLLECTIONS.every(
-    (c) => Array.isArray(o[c]) && (o[c] as unknown[]).every((r) => typeof r === 'object' && r !== null && typeof (r as { id?: unknown }).id === 'string'),
-  );
+  return COLLECTIONS.every((c) => isRecordList(c, o[c]));
 }
 
-export function parseBackup(json: string): BoardData {
+function isArchiveMap(v: unknown): v is ArchiveMap {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  return Object.entries(v).every(([year, list]) => /^\d{4}$/.test(year) && isRecordList('schedules', list));
+}
+
+/** バックアップファイルを読む。形式が違えば例外 */
+export function parseBackupFile(json: string): { data: BoardData; archive: ArchiveMap } {
   const fail = () => new Error('バックアップファイルの形式が正しくありません');
   let parsed: unknown;
   try {
@@ -151,5 +160,10 @@ export function parseBackup(json: string): BoardData {
   if (typeof parsed !== 'object' || parsed === null) throw fail();
   const b = parsed as Partial<Backup>;
   if (b.format !== 'yotei-board-backup' || b.version !== 1 || !isBoardData(b.data)) throw fail();
-  return b.data;
+  if (b.archive !== undefined && !isArchiveMap(b.archive)) throw fail();
+  return { data: b.data, archive: b.archive ?? {} };
+}
+
+export function parseBackup(json: string): BoardData {
+  return parseBackupFile(json).data;
 }

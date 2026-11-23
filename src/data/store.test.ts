@@ -17,6 +17,7 @@ class FakeRepo implements Repository {
   writes: { key: FileKey; message: string }[] = [];
   polls = 0;
   loads = 0;
+  writeAttempts = 0;
   failWrite: RepoError[] = [];
   failPoll: RepoError[] = [];
   failLoad: RepoError[] = [];
@@ -47,6 +48,7 @@ class FakeRepo implements Repository {
   }
 
   async write(key: FileKey, _prev: Snapshot, mutate: (d: BoardData) => BoardData, message: string): Promise<Snapshot> {
+    this.writeAttempts += 1;
     const err = this.failWrite.shift();
     if (err) throw err;
     this.writes.push({ key, message });
@@ -280,5 +282,71 @@ describe('SyncStore', () => {
     await vi.advanceTimersByTimeAsync(120000);
     expect(repo.writes).toHaveLength(0);
     expect(repo.polls).toBe(0);
+  });
+
+  it('鍵を登録し直すと、保存待ちだった操作が新しい接続で保存される', async () => {
+    await store.start();
+    repo.failWrite.push(new RepoError('unauthorized', 'bad key'));
+    store.dispatch(upNote(note('n1')));
+    await vi.advanceTimersByTimeAsync(5100);
+    expect(store.getState().status).toBe('unauthorized');
+
+    const fresh = new FakeRepo();
+    await store.reconnect(fresh);
+    await vi.advanceTimersByTimeAsync(5100);
+    expect(fresh.writes).toHaveLength(1);
+    expect(toBoard(fresh.server).notes.map((n) => n.id)).toEqual(['n1']);
+    expect(store.getState().status).toBe('ready');
+    expect(store.getState().pendingCount).toBe(0);
+  });
+
+  it('データを読み込めていない間は読み取り専用で、操作を受け付けない', async () => {
+    expect(store.getState().readOnly).toBe(true);
+    repo.failLoad.push(new RepoError('corrupt', 'bad file'));
+    await store.start();
+    expect(store.getState().readOnly).toBe(true);
+    store.dispatch(upNote(note('n1')));
+    expect(store.getState().pendingCount).toBe(0);
+    expect(store.getState().data.notes).toEqual([]);
+  });
+
+  it('正常に読み込めたら編集でき、途中でファイルが壊れたら読み取り専用になる', async () => {
+    await store.start();
+    expect(store.getState().readOnly).toBe(false);
+    repo.failPoll.push(new RepoError('corrupt', 'bad file'));
+    await vi.advanceTimersByTimeAsync(20100);
+    expect(store.getState().status).toBe('corrupt');
+    expect(store.getState().readOnly).toBe(true);
+    store.dispatch(upNote(note('n1')));
+    expect(store.getState().pendingCount).toBe(0);
+  });
+
+  it('再開時刻が過去でも、回数制限中は最低1分は再試行しない（flush でも送らない）', async () => {
+    await store.start();
+    repo.failWrite.push(new RepoError('rate-limited', 'limited', Date.now() - 3600000));
+    repo.failWrite.push(new RepoError('rate-limited', 'limited', Date.now() - 3600000));
+    store.dispatch(upNote(note('n1')));
+    await vi.advanceTimersByTimeAsync(5100);
+    expect(repo.writeAttempts).toBe(1);
+    await store.flush();
+    await vi.advanceTimersByTimeAsync(50000);
+    expect(repo.writeAttempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(11000); // 最初の失敗から約61秒
+    expect(repo.writeAttempts).toBe(2);
+    // 2回続けて制限されたら、待ち時間を倍（2分）に延ばす
+    await vi.advanceTimersByTimeAsync(100000);
+    expect(repo.writeAttempts).toBe(2);
+    await vi.advanceTimersByTimeAsync(25000);
+    expect(repo.writeAttempts).toBe(3);
+    expect(store.getState().pendingCount).toBe(0);
+  });
+
+  it('保存先のリポジトリに届かなくなったら、鍵の問題として止める', async () => {
+    await store.start();
+    repo.failWrite.push(new RepoError('not-found', 'gone'));
+    store.dispatch(upNote(note('n1')));
+    await vi.advanceTimersByTimeAsync(5100);
+    expect(store.getState().status).toBe('unauthorized');
+    expect(store.getState().pendingCount).toBe(1);
   });
 });
