@@ -1,4 +1,4 @@
-import { addDays, diffDays, formatShort, isOffDay } from './dates';
+import { diffDays, isOffDay } from './dates';
 import type { BoardData, DateStr, Member, Note, NoteCategory, Schedule } from './types';
 
 export type Area = 'LABO' | '本社' | '在宅' | '休み' | '現場';
@@ -180,11 +180,10 @@ export interface EventItem {
   refId: string;
 }
 
-function periodText(start: DateStr, end: DateStr): string {
-  return start === end ? formatShort(start) : `${formatShort(start)}〜${formatShort(end)}`;
-}
-
-/** イベント欄：掲示の「イベント」＋車両だけの予定（開始30日前〜終了日） */
+/**
+ * イベント欄：掲示の「イベント」だけを出す。
+ * 車両だけの予定は日々の使用予定にも使うため、車両の帯にだけ出す（イベント欄が埋まるため）。
+ */
 export function eventsOn(data: BoardData, date: DateStr): EventItem[] {
   const items: EventItem[] = [];
   for (const n of data.notes) {
@@ -192,15 +191,6 @@ export function eventsOn(data: BoardData, date: DateStr): EventItem[] {
     const last = n.endDate ?? n.date;
     if (last !== null && last < date) continue;
     items.push({ key: `n:${n.id}`, text: n.text, date: n.date, endDate: n.endDate, source: 'note', refId: n.id });
-  }
-  const vehicleName = new Map(data.vehicles.map((v) => [v.id, v.name]));
-  for (const s of data.schedules) {
-    if (!isValid(s) || s.memberIds.length > 0 || !s.vehicleId) continue;
-    if (!(addDays(s.start, -30) <= date && date <= s.end)) continue;
-    const name = vehicleName.get(s.vehicleId);
-    if (name === undefined) continue;
-    const text = [name, s.site.trim(), periodText(s.start, s.end), s.memo.trim()].filter(Boolean).join(' ');
-    items.push({ key: `s:${s.id}`, text, date: s.start, endDate: s.end, source: 'vehicle', refId: s.id });
   }
   return items.sort((a, b) => {
     if (a.date === b.date) return 0;

@@ -236,14 +236,12 @@ describe('vehicleBars', () => {
 });
 
 describe('eventsOn / activeNotes', () => {
-  it('車両だけの予定は開始30日前から終了日までイベント欄に出る', () => {
+  it('車両だけの予定はイベント欄に出ない（車両の帯にだけ出る）', () => {
     const s = sched({ start: '2026-12-03', end: '2026-12-04', kind: '現場', site: '車検', vehicleId: 'v1' });
     const data = board({ schedules: [s] });
-    expect(eventsOn(data, '2026-11-02')).toEqual([]);
-    expect(eventsOn(data, '2026-11-03')).toHaveLength(1);
-    expect(eventsOn(data, '2026-11-23')[0]).toMatchObject({ text: '1号車 車検 12/3〜12/4', source: 'vehicle', refId: s.id });
-    expect(eventsOn(data, '2026-12-04')).toHaveLength(1);
-    expect(eventsOn(data, '2026-12-05')).toEqual([]);
+    expect(eventsOn(data, '2026-11-23')).toEqual([]);
+    expect(eventsOn(data, '2026-12-03')).toEqual([]);
+    expect(vehicleBars(data, 'v1', '2026-11-30', '2026-12-06')).toHaveLength(1);
   });
 
   it('人員のいる車両予定はイベント欄に出ない', () => {

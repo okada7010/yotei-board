@@ -118,7 +118,7 @@ export function NotesPanel({ category, date, onEdit, children }: { category: Not
   );
 }
 
-/** 右上：月カレンダーとイベント（車検などは車両だけの予定から自動表示） */
+/** 右上：月カレンダーとイベント */
 export function EventPanel({ date, todayStr, onEditNote, onEditVehicle }: { date: DateStr; todayStr: DateStr; onEditNote: (note: Note | null) => void; onEditVehicle: (scheduleId: string) => void }) {
   const { data } = useBoard();
   const events = eventsOn(data, date);
