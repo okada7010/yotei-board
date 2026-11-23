@@ -42,7 +42,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- ボタン・入力 ---------- */
 .btn {
   min-height: 2.5em; padding: 0.3em 0.9em; border: 1px solid #9ca3af; border-radius: 0.5em;
-  background: var(--surface); cursor: pointer; white-space: nowrap; touch-action: manipulation;
+  background: var(--surface); color: var(--ink); cursor: pointer; white-space: nowrap; touch-action: manipulation;
 }
 .btn:hover { background: var(--surface-2); }
 .btn:active { transform: translateY(1px); }
@@ -140,8 +140,12 @@ input[type='checkbox'] { width: 1.2em; height: 1.2em; min-height: 0; }
 .date-head { display: flex; align-items: center; gap: 0.4em; padding: 0.25em 0.5em; border-bottom: 0.12em solid var(--line); flex: none; }
 .date-big { font-size: 1.7em; font-weight: 800; letter-spacing: 0.02em; }
 .date-other { color: #b45309; }
-.placement { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 3fr) minmax(0, 2.2fr) minmax(0, 1.1fr) minmax(0, 1.5fr); }
-.placement-row { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); border-bottom: 0.08em solid var(--line); min-height: 0; overflow: hidden; }
+/* 行の高さは中身に合わせて伸び、余った分を写真に近い比率（LABO・本社を広め）で分ける */
+.placement { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.placement-row { display: grid; grid-template-columns: 3.6em minmax(0, 1fr); border-bottom: 0.08em solid var(--line); min-height: 2.3em; overflow: hidden; flex: 1.2 1 auto; }
+.placement-row:nth-child(1) { flex-grow: 3; }
+.placement-row:nth-child(2) { flex-grow: 2.2; }
+.placement-row:nth-child(3) { flex-grow: 1; }
 .placement-row:last-child { border-bottom: 0; }
 .placement-label { font-weight: 700; padding: 0.3em 0.4em; border-right: 0.08em solid var(--line); font-size: 1.05em; }
 .placement-row .tags { padding: 0.3em 0.4em; overflow: hidden; }
@@ -172,7 +176,10 @@ input[type='checkbox'] { width: 1.2em; height: 1.2em; min-height: 0; }
   border: 0.14em solid transparent; background-clip: padding-box; border-radius: 0.45em; font-size: 0.8em; font-weight: 700;
   cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; overflow: hidden; z-index: 1;
 }
-.bar-text { flex: 1; min-width: 0; padding: 0 0.3em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.bar-text {
+  flex: 1; min-width: 0; padding: 0 0.2em; overflow: hidden; pointer-events: none; line-height: 1.15; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+}
 .bar-handle { width: 0.8em; align-self: stretch; cursor: ew-resize; flex: none; touch-action: none; }
 .bar-handle-start { border-left: 0.25em solid rgba(20, 83, 45, 0.45); }
 .bar-handle-end { border-right: 0.25em solid rgba(20, 83, 45, 0.45); }

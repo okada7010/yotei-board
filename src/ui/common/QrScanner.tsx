@@ -1,5 +1,6 @@
-import jsQR from 'jsqr';
 import { useEffect, useRef, useState } from 'react';
+
+type Decoder = (data: Uint8ClampedArray, width: number, height: number) => { data: string } | null;
 
 /** 端末のカメラで QR コードを読み取る */
 export function QrScanner({ onResult, onCancel }: { onResult: (text: string) => void; onCancel: () => void }) {
@@ -11,11 +12,12 @@ export function QrScanner({ onResult, onCancel }: { onResult: (text: string) => 
     let raf = 0;
     let stopped = false;
     const canvas = document.createElement('canvas');
+    let jsQR: Decoder | null = null;
 
     const tick = () => {
       if (stopped) return;
       const video = videoRef.current;
-      if (video && video.readyState >= 2 && video.videoWidth > 0) {
+      if (jsQR && video && video.readyState >= 2 && video.videoWidth > 0) {
         const scale = Math.min(1, 640 / video.videoWidth);
         canvas.width = Math.round(video.videoWidth * scale);
         canvas.height = Math.round(video.videoHeight * scale);
@@ -37,6 +39,8 @@ export function QrScanner({ onResult, onCancel }: { onResult: (text: string) => 
     (async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('unsupported');
+        // 読み取り用の部品は大きいので、カメラを使うときだけ読み込む
+        jsQR = (await import('jsqr')).default as Decoder;
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
         if (stopped) return;
         const video = videoRef.current;
