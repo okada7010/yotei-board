@@ -1,0 +1,105 @@
+import { useState } from 'react';
+import { newId, stamp } from '../../domain/ops';
+import type { Note, NoteCategory } from '../../domain/types';
+import { useBoard } from '../app/AppContext';
+import { Dialog } from '../common/Dialog';
+
+interface Props {
+  category: NoteCategory;
+  /** 既存の行を編集するとき */
+  note: Note | null;
+  onClose: () => void;
+}
+
+const DONE_LABEL: Record<NoteCategory, string | null> = {
+  トラブル: '解決済みにする',
+  連絡事項: null,
+  来客予定: null,
+  イベント: null,
+};
+
+const PLACEHOLDER: Record<NoteCategory, string> = {
+  トラブル: '例：〇〇社 搬送ライン停止',
+  連絡事項: '例：月末に棚卸しがあります',
+  来客予定: '例：14:00 〇〇社 2名',
+  イベント: '例：全体ミーティング',
+};
+
+export function NoteDialog({ category, note, onClose }: Props) {
+  const { dispatch, device } = useBoard();
+  const [text, setText] = useState(note?.text ?? '');
+  const [date, setDate] = useState(note?.date ?? '');
+  const [endDate, setEndDate] = useState(note?.endDate ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const dated = category === '来客予定' || category === 'イベント';
+
+  const build = (done: boolean): Note => {
+    const now = new Date();
+    const base: Note = note ?? { id: newId(), category, text: '', date: null, endDate: null, done: false, createdAt: now.toISOString(), updatedAt: '', updatedBy: '' };
+    return stamp({ ...base, text: text.trim(), date: dated && date ? date : null, endDate: dated && endDate && endDate > date ? endDate : null, done }, device, now);
+  };
+
+  const save = (done = false) => {
+    if (!text.trim()) {
+      setError('内容を入力してください');
+      return;
+    }
+    dispatch({ type: 'upsert', collection: 'notes', record: build(done) });
+    onClose();
+  };
+
+  const remove = () => {
+    if (note) dispatch({ type: 'delete', collection: 'notes', id: note.id });
+    onClose();
+  };
+
+  const doneLabel = DONE_LABEL[category];
+  return (
+    <Dialog
+      title={`${category}を${note ? '編集' : '追加'}`}
+      onClose={onClose}
+      footer={
+        <>
+          {note && (
+            <button type="button" className="btn btn-danger" onClick={remove}>
+              削除
+            </button>
+          )}
+          {note && doneLabel && (
+            <button type="button" className="btn" onClick={() => save(true)}>
+              {doneLabel}
+            </button>
+          )}
+          <span className="spacer" />
+          <button type="button" className="btn" onClick={onClose}>
+            やめる
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => save(false)}>
+            保存
+          </button>
+        </>
+      }
+    >
+      <div className="form">
+        <label className="field">
+          <span>内容</span>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={120} placeholder={PLACEHOLDER[category]} autoFocus />
+        </label>
+        {dated && (
+          <div className="field-row">
+            <label className="field">
+              <span>日付（任意）</span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>終了日（任意）</span>
+              <input type="date" value={endDate} min={date} onChange={(e) => setEndDate(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {dated && <p className="hint">日付を入れると、その日を過ぎたら自動で表示から消えます。</p>}
+        {error && <p className="form-error">{error}</p>}
+      </div>
+    </Dialog>
+  );
+}
