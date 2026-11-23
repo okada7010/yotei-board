@@ -1,4 +1,5 @@
 import { useBoard } from '../app/AppContext';
+import { leaveToRegister } from '../app/leave';
 
 function hhmm(ms: number): string {
   const d = new Date(ms);
@@ -7,7 +8,7 @@ function hhmm(ms: number): string {
 
 /** 最終更新時刻と、保存待ち・混雑中などの状態表示 */
 export function StatusBar() {
-  const { status, lastSyncAt, pendingCount, retryAt, mode } = useBoard();
+  const { status, lastSyncAt, pendingCount, retryAt, mode, store } = useBoard();
   let label: string | null = null;
   let tone = 'info';
   switch (status) {
@@ -45,7 +46,14 @@ export function StatusBar() {
   }
   return (
     <div className="status">
-      {mode === 'local' && <span className="badge badge-demo">お試しモード</span>}
+      {mode === 'local' && (
+        <>
+          <span className="badge badge-demo">お試しモード</span>
+          <button type="button" className="btn btn-small btn-leave" onClick={() => void leaveToRegister(store)}>
+            登録画面へ戻る
+          </button>
+        </>
+      )}
       {label && <span className={`badge badge-${tone}`}>{label}</span>}
       <span className="status-time">最終更新 {lastSyncAt ? hhmm(lastSyncAt) : '--:--'}</span>
     </div>

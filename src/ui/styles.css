@@ -99,6 +99,7 @@ input[type='checkbox'] { width: 1.2em; height: 1.2em; min-height: 0; }
 .badge-warn { background: var(--amber-bg); color: var(--amber-ink); }
 .badge-bad { background: var(--red-bg); color: #991b1b; }
 .badge-demo { background: #ede9fe; color: #4c1d95; }
+.status .btn.btn-leave { min-height: 1.9em; font-size: 0.78rem; }
 
 .ro-banner {
   position: fixed; top: 0.5rem; left: 50%; transform: translateX(-50%); z-index: 60; max-width: calc(100% - 1rem);
