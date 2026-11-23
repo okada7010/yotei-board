@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# 設計書・計画書は公開しない（社内保管）
+docs/superpowers/
+*.local
+.env*
+.superpowers/
