@@ -1,7 +1,7 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { ReactNode } from 'react';
-import { addMonths, dayKind, daysInMonth, firstOfMonth, formatShort, parseDate, rangeDays } from '../../domain/dates';
-import { PLACEMENT_AREAS, activeNotes, eventsOn, placement, sitesOn, type Area, type EventItem } from '../../domain/derive';
+import { addMonths, dayKind, daysInMonth, firstOfMonth, parseDate, rangeDays } from '../../domain/dates';
+import { PLACEMENT_AREAS, activeNotes, eventsOn, noteWhenText, placement, sitesOn, type Area, type EventItem } from '../../domain/derive';
 import type { DateStr, Member, Note, NoteCategory } from '../../domain/types';
 import { useBoard } from '../app/AppContext';
 import { QrCode } from '../common/QrCode';
@@ -85,11 +85,6 @@ export function SitePanel({ date, onTapMember }: { date: DateStr; onTapMember: (
   );
 }
 
-function noteDateText(n: Pick<Note, 'date' | 'endDate'>): string {
-  if (!n.date) return '';
-  return n.endDate && n.endDate !== n.date ? `${formatShort(n.date)}〜${formatShort(n.endDate)}` : formatShort(n.date);
-}
-
 /** 下段：トラブル／連絡事項／来客予定 */
 export function NotesPanel({ category, date, onEdit, children }: { category: NoteCategory; date: DateStr; onEdit: (note: Note | null) => void; children?: ReactNode }) {
   const { data } = useBoard();
@@ -106,7 +101,7 @@ export function NotesPanel({ category, date, onEdit, children }: { category: Not
         {notes.map((n) => (
           <li key={n.id}>
             <button type="button" className="note-item" onClick={() => onEdit(n)}>
-              {n.date && <span className="note-date">{noteDateText(n)}</span>}
+              {noteWhenText(n) && <span className="note-date">{noteWhenText(n)}</span>}
               <span className="note-text">{n.text}</span>
               {category === 'トラブル' && <span className="trouble-dot" aria-label="発生中" />}
             </button>
@@ -158,7 +153,7 @@ export function EventPanel({ date, todayStr, onEditNote, onEditVehicle }: { date
         {events.map((e) => (
           <li key={e.key}>
             <button type="button" className="event-item" onClick={() => open(e)}>
-              {e.source === 'note' && e.date && <span className="note-date">{noteDateText(e)}</span>}
+              {noteWhenText(e) && <span className="note-date">{noteWhenText(e)}</span>}
               <span className="note-text">{e.text}</span>
             </button>
           </li>

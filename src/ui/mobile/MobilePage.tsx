@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { addDays, formatMD, formatShort } from '../../domain/dates';
-import { PLACEMENT_AREAS, activeNotes, barLabel, effectiveSchedule, eventsOn, placement, sitesOn, vehicleBars } from '../../domain/derive';
+import { PLACEMENT_AREAS, activeNotes, barLabel, effectiveSchedule, eventsOn, noteWhenText, placement, sitesOn, vehicleBars } from '../../domain/derive';
 import type { Member, Note, NoteCategory, Schedule } from '../../domain/types';
 import { useBoard } from '../app/AppContext';
 import { useToday } from '../board/BoardPage';
@@ -38,7 +38,7 @@ export function MobilePage({ navigate }: { navigate: (p: Route) => void }) {
         {list.length === 0 && <p className="empty">ありません</p>}
         {list.map((n) => (
           <button key={n.id} type="button" className="m-line" onClick={() => setNote({ category, note: n })}>
-            {n.date && <span className="note-date">{formatShort(n.date)}</span>}
+            {noteWhenText(n) && <span className="note-date">{noteWhenText(n)}</span>}
             <span>{n.text}</span>
             {category === 'トラブル' && <span className="trouble-dot" />}
           </button>
@@ -130,7 +130,7 @@ export function MobilePage({ navigate }: { navigate: (p: Route) => void }) {
             className="m-line"
             onClick={() => (e.source === 'vehicle' ? setSchedule({ id: e.refId }) : setNote({ category: 'イベント', note: data.notes.find((n) => n.id === e.refId) ?? null }))}
           >
-            {e.source === 'note' && e.date && <span className="note-date">{formatShort(e.date)}</span>}
+            {noteWhenText(e) && <span className="note-date">{noteWhenText(e)}</span>}
             <span>{e.text}</span>
           </button>
         ))}

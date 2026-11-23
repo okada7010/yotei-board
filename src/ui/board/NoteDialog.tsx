@@ -21,7 +21,7 @@ const DONE_LABEL: Record<NoteCategory, string | null> = {
 const PLACEHOLDER: Record<NoteCategory, string> = {
   トラブル: '例：〇〇社 搬送ライン停止',
   連絡事項: '例：月末に棚卸しがあります',
-  来客予定: '例：14:00 〇〇社 2名',
+  来客予定: '例：〇〇社 2名',
   イベント: '例：全体ミーティング',
 };
 
@@ -30,18 +30,26 @@ export function NoteDialog({ category, note, onClose }: Props) {
   const [text, setText] = useState(note?.text ?? '');
   const [date, setDate] = useState(note?.date ?? '');
   const [endDate, setEndDate] = useState(note?.endDate ?? '');
+  const [timeStart, setTimeStart] = useState(note?.timeStart ?? '');
+  const [timeEnd, setTimeEnd] = useState(note?.timeEnd ?? '');
   const [error, setError] = useState<string | null>(null);
-  const dated = category === '来客予定' || category === 'イベント';
+  /** 日付を過ぎたら自動で表示から消える区分 */
+  const expires = category === '来客予定' || category === 'イベント';
+  const multiDay = Boolean(date && endDate && endDate > date);
 
   const build = (done: boolean): Note => {
     const now = new Date();
     const base: Note = note ?? { id: newId(), category, text: '', date: null, endDate: null, done: false, createdAt: now.toISOString(), updatedAt: '', updatedBy: '' };
-    return stamp({ ...base, text: text.trim(), date: dated && date ? date : null, endDate: dated && endDate && endDate > date ? endDate : null, done }, device, now);
+    return stamp({ ...base, text: text.trim(), date: date || null, endDate: multiDay ? endDate : null, timeStart: timeStart || null, timeEnd: timeEnd || null, done }, device, now);
   };
 
   const save = (done = false) => {
     if (!text.trim()) {
       setError('内容を入力してください');
+      return;
+    }
+    if (!multiDay && timeStart && timeEnd && timeEnd < timeStart) {
+      setError('終了の時間は、開始の時間より後にしてください');
       return;
     }
     dispatch({ type: 'upsert', collection: 'notes', record: build(done) });
@@ -81,23 +89,31 @@ export function NoteDialog({ category, note, onClose }: Props) {
       }
     >
       <div className="form">
+        <div className="field-row">
+          <label className="field">
+            <span>日付</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>終了日（複数日のとき）</span>
+            <input type="date" value={endDate} min={date} onChange={(e) => setEndDate(e.target.value)} />
+          </label>
+        </div>
+        <div className="field-row">
+          <label className="field">
+            <span>時間（開始）</span>
+            <input type="time" value={timeStart} step={300} onChange={(e) => setTimeStart(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>時間（終了）</span>
+            <input type="time" value={timeEnd} step={300} onChange={(e) => setTimeEnd(e.target.value)} />
+          </label>
+        </div>
         <label className="field">
           <span>内容</span>
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={120} placeholder={PLACEHOLDER[category]} autoFocus />
         </label>
-        {dated && (
-          <div className="field-row">
-            <label className="field">
-              <span>日付（任意）</span>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </label>
-            <label className="field">
-              <span>終了日（任意）</span>
-              <input type="date" value={endDate} min={date} onChange={(e) => setEndDate(e.target.value)} />
-            </label>
-          </div>
-        )}
-        {dated && <p className="hint">日付を入れると、その日を過ぎたら自動で表示から消えます。</p>}
+        <p className="hint">日付と時間は空欄でも保存できます。{expires && '日付を入れると、その日を過ぎたら自動で表示から消えます。'}</p>
         {error && <p className="form-error">{error}</p>}
       </div>
     </Dialog>

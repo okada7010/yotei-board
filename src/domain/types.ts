@@ -54,6 +54,9 @@ export interface Note extends Stamp {
   text: string;
   date: DateStr | null;
   endDate: DateStr | null;
+  /** 開始・終了の時刻 'HH:MM'。古いレコードには項目が無い */
+  timeStart?: string | null;
+  timeEnd?: string | null;
   done: boolean;
   createdAt: string;
 }

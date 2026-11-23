@@ -1,4 +1,4 @@
-import { diffDays, isOffDay } from './dates';
+import { diffDays, formatShort, isOffDay } from './dates';
 import type { BoardData, DateStr, Member, Note, NoteCategory, Schedule } from './types';
 
 export type Area = 'LABO' | '本社' | '在宅' | '休み' | '現場';
@@ -176,8 +176,35 @@ export interface EventItem {
   text: string;
   date: DateStr | null;
   endDate: DateStr | null;
+  timeStart: string | null;
+  timeEnd: string | null;
   source: 'note' | 'vehicle';
   refId: string;
+}
+
+const hm = (t: string): string => t.replace(/^0/, '');
+
+/** 掲示の「日付 時間」の表示。時間は「10:00〜12:00」の範囲で出す（片方だけなら「14:00〜」「〜17:30」） */
+export function noteWhenText(n: Pick<Note, 'date' | 'endDate' | 'timeStart' | 'timeEnd'>): string {
+  const parts: string[] = [];
+  if (n.date) parts.push(n.endDate && n.endDate !== n.date ? `${formatShort(n.date)}〜${formatShort(n.endDate)}` : formatShort(n.date));
+  if (n.timeStart || n.timeEnd) parts.push(`${n.timeStart ? hm(n.timeStart) : ''}〜${n.timeEnd ? hm(n.timeEnd) : ''}`);
+  return parts.join(' ');
+}
+
+/** 日付の早い順 → 同じ日は開始時刻の早い順。日付なし・時刻なしは後ろ */
+function byWhen(a: { date: DateStr | null; timeStart?: string | null }, b: { date: DateStr | null; timeStart?: string | null }): number {
+  if (a.date !== b.date) {
+    if (a.date === null) return 1;
+    if (b.date === null) return -1;
+    return a.date < b.date ? -1 : 1;
+  }
+  const ta = a.timeStart ?? null;
+  const tb = b.timeStart ?? null;
+  if (ta === tb) return 0;
+  if (ta === null) return 1;
+  if (tb === null) return -1;
+  return ta < tb ? -1 : 1;
 }
 
 /**
@@ -190,14 +217,9 @@ export function eventsOn(data: BoardData, date: DateStr): EventItem[] {
     if (n.category !== 'イベント' || n.done) continue;
     const last = n.endDate ?? n.date;
     if (last !== null && last < date) continue;
-    items.push({ key: `n:${n.id}`, text: n.text, date: n.date, endDate: n.endDate, source: 'note', refId: n.id });
+    items.push({ key: `n:${n.id}`, text: n.text, date: n.date, endDate: n.endDate, timeStart: n.timeStart ?? null, timeEnd: n.timeEnd ?? null, source: 'note', refId: n.id });
   }
-  return items.sort((a, b) => {
-    if (a.date === b.date) return 0;
-    if (a.date === null) return 1;
-    if (b.date === null) return -1;
-    return a.date < b.date ? -1 : 1;
-  });
+  return items.sort(byWhen);
 }
 
 /** 掲示欄に出す行（解決済み・日付の過ぎたものを除く） */
@@ -212,10 +234,9 @@ export function activeNotes(data: BoardData, category: NoteCategory, date: DateS
       return true;
     })
     .sort((a, b) => {
-      if (category === '来客予定' && a.date !== b.date) {
-        if (a.date === null) return 1;
-        if (b.date === null) return -1;
-        return a.date < b.date ? -1 : 1;
+      if (category === '来客予定') {
+        const w = byWhen(a, b);
+        if (w !== 0) return w;
       }
       return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
     });

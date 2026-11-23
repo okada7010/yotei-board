@@ -5,6 +5,7 @@ import {
   barLabel,
   effectiveSchedule,
   eventsOn,
+  noteWhenText,
   overlappingSchedules,
   placement,
   siteSuggestions,
@@ -262,6 +263,33 @@ describe('eventsOn / activeNotes', () => {
     });
     expect(eventsOn(data, '2026-11-26').map((e) => e.text)).toEqual(['先', '後', '日付なし']);
     expect(eventsOn(data, '2026-11-27').map((e) => e.text)).toEqual(['後', '日付なし']);
+  });
+
+  it('日付と時間の表示：時間は範囲で出す', () => {
+    const w = (p: Partial<Note>) => noteWhenText({ date: null, endDate: null, ...p });
+    expect(w({})).toBe('');
+    expect(w({ date: '2026-11-24' })).toBe('11/24');
+    expect(w({ date: '2026-11-24', timeStart: '10:00', timeEnd: '12:00' })).toBe('11/24 10:00〜12:00');
+    expect(w({ date: '2026-11-24', timeStart: '14:00' })).toBe('11/24 14:00〜');
+    expect(w({ date: '2026-11-24', timeEnd: '17:30' })).toBe('11/24 〜17:30');
+    expect(w({ timeStart: '09:00', timeEnd: '09:30' })).toBe('9:00〜9:30');
+    expect(w({ date: '2026-11-24', endDate: '2026-11-26', timeStart: '13:00', timeEnd: '15:00' })).toBe('11/24〜11/26 13:00〜15:00');
+    expect(w({ date: '2026-11-24', endDate: '2026-11-24', timeStart: null, timeEnd: null })).toBe('11/24');
+  });
+
+  it('同じ日の来客予定・イベントは開始時刻の早い順（時刻なしは後ろ）', () => {
+    const data = board({
+      notes: [
+        note('来客予定', '時刻なし', { date: '2026-11-24' }),
+        note('来客予定', '午後', { date: '2026-11-24', timeStart: '14:00', timeEnd: '15:00' }),
+        note('来客予定', '午前', { date: '2026-11-24', timeStart: '09:30' }),
+        note('イベント', 'E午後', { date: '2026-11-24', timeStart: '13:00' }),
+        note('イベント', 'E午前', { date: '2026-11-24', timeStart: '08:00' }),
+      ],
+    });
+    expect(activeNotes(data, '来客予定', '2026-11-24').map((n) => n.text)).toEqual(['午前', '午後', '時刻なし']);
+    expect(eventsOn(data, '2026-11-24').map((e) => e.text)).toEqual(['E午前', 'E午後']);
+    expect(eventsOn(data, '2026-11-24')[0]).toMatchObject({ timeStart: '08:00', timeEnd: null });
   });
 
   it('トラブルは未解決のみ、来客予定は当日以降のみ', () => {
