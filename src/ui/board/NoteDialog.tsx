@@ -25,6 +25,14 @@ const PLACEHOLDER: Record<NoteCategory, string> = {
   イベント: '例：全体ミーティング',
 };
 
+/** 名前欄を出す区分と、その見出し・入力例（連絡事項には出さない） */
+const PERSON_FIELD: Record<NoteCategory, { label: string; placeholder: string } | null> = {
+  トラブル: { label: '名前（対応者）', placeholder: '例：岡田' },
+  連絡事項: null,
+  来客予定: { label: '名前（来客者・対応者）', placeholder: '例：〇〇社 山田様／対応 岡田' },
+  イベント: { label: '名前（担当・参加者）', placeholder: '例：岡田、鈴木' },
+};
+
 export function NoteDialog({ category, note, onClose }: Props) {
   const { dispatch, device } = useBoard();
   const [text, setText] = useState(note?.text ?? '');
@@ -32,6 +40,8 @@ export function NoteDialog({ category, note, onClose }: Props) {
   const [endDate, setEndDate] = useState(note?.endDate ?? '');
   const [timeStart, setTimeStart] = useState(note?.timeStart ?? '');
   const [timeEnd, setTimeEnd] = useState(note?.timeEnd ?? '');
+  const [person, setPerson] = useState(note?.person ?? '');
+  const personField = PERSON_FIELD[category];
   const [error, setError] = useState<string | null>(null);
   /** 日付を過ぎたら自動で表示から消える区分 */
   const expires = category === '来客予定' || category === 'イベント';
@@ -40,7 +50,7 @@ export function NoteDialog({ category, note, onClose }: Props) {
   const build = (done: boolean): Note => {
     const now = new Date();
     const base: Note = note ?? { id: newId(), category, text: '', date: null, endDate: null, done: false, createdAt: now.toISOString(), updatedAt: '', updatedBy: '' };
-    return stamp({ ...base, text: text.trim(), date: date || null, endDate: multiDay ? endDate : null, timeStart: timeStart || null, timeEnd: timeEnd || null, done }, device, now);
+    return stamp({ ...base, text: text.trim(), date: date || null, endDate: multiDay ? endDate : null, timeStart: timeStart || null, timeEnd: timeEnd || null, person: personField ? person.trim() || null : (base.person ?? null), done }, device, now);
   };
 
   const save = (done = false) => {
@@ -113,7 +123,13 @@ export function NoteDialog({ category, note, onClose }: Props) {
           <span>内容</span>
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={120} placeholder={PLACEHOLDER[category]} autoFocus />
         </label>
-        <p className="hint">日付と時間は空欄でも保存できます。{expires && '日付を入れると、その日を過ぎたら自動で表示から消えます。'}</p>
+        {personField && (
+          <label className="field">
+            <span>{personField.label}</span>
+            <input type="text" value={person} onChange={(e) => setPerson(e.target.value)} maxLength={40} placeholder={personField.placeholder} />
+          </label>
+        )}
+        <p className="hint">日付と時間{personField && '・名前'}は空欄でも保存できます。{expires && '日付を入れると、その日を過ぎたら自動で表示から消えます。'}</p>
         {error && <p className="form-error">{error}</p>}
       </div>
     </Dialog>

@@ -178,6 +178,7 @@ export interface EventItem {
   endDate: DateStr | null;
   timeStart: string | null;
   timeEnd: string | null;
+  person: string | null;
   source: 'note' | 'vehicle';
   refId: string;
 }
@@ -217,7 +218,7 @@ export function eventsOn(data: BoardData, date: DateStr): EventItem[] {
     if (n.category !== 'イベント' || n.done) continue;
     const last = n.endDate ?? n.date;
     if (last !== null && last < date) continue;
-    items.push({ key: `n:${n.id}`, text: n.text, date: n.date, endDate: n.endDate, timeStart: n.timeStart ?? null, timeEnd: n.timeEnd ?? null, source: 'note', refId: n.id });
+    items.push({ key: `n:${n.id}`, text: n.text, date: n.date, endDate: n.endDate, timeStart: n.timeStart ?? null, timeEnd: n.timeEnd ?? null, person: n.person ?? null, source: 'note', refId: n.id });
   }
   return items.sort(byWhen);
 }

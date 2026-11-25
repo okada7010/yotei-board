@@ -57,6 +57,8 @@ export interface Note extends Stamp {
   /** 開始・終了の時刻 'HH:MM'。古いレコードには項目が無い */
   timeStart?: string | null;
   timeEnd?: string | null;
+  /** 名前（担当・対応者・来客者など。自由入力）。古いレコードには項目が無い */
+  person?: string | null;
   done: boolean;
   createdAt: string;
 }

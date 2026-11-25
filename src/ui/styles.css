@@ -212,6 +212,7 @@ input[type='checkbox'] { width: 1.2em; height: 1.2em; min-height: 0; }
 .event-item:hover, .note-item:hover { background: var(--surface-2); }
 .note-date { color: var(--ink-2); font-size: 0.85em; white-space: nowrap; flex: none; }
 .note-text { min-width: 0; overflow-wrap: anywhere; }
+.note-person { min-width: 0; overflow-wrap: anywhere; font-size: 0.8em; font-weight: 400; color: var(--ink-2); border: 0.08em solid var(--ink-2); border-radius: 0.3em; padding: 0 0.35em; }
 
 /* 現場・掲示 */
 .site-list { display: flex; flex-direction: column; gap: 0.5em; overflow: hidden; min-height: 0; flex: 1; }
