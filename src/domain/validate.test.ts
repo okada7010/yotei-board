@@ -20,3 +20,16 @@ describe('掲示の時間（開始〜終了）', () => {
     expect(isRecord('notes', { ...base, timeEnd: '25:00' })).toBe(false);
   });
 });
+
+describe('掲示の名前', () => {
+  it('文字列と null は通る（項目が無い古いレコードも通る）', () => {
+    expect(isRecord('notes', { ...base, person: '岡田' })).toBe(true);
+    expect(isRecord('notes', { ...base, person: null })).toBe(true);
+    expect(isRecord('notes', base)).toBe(true);
+  });
+
+  it('文字列でない名前は通さない', () => {
+    expect(isRecord('notes', { ...base, person: 1 })).toBe(false);
+    expect(isRecord('notes', { ...base, person: ['岡田'] })).toBe(false);
+  });
+});

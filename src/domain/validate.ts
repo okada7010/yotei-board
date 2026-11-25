@@ -13,6 +13,8 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
 const isStrOrNull = (v: unknown): boolean => v === null || isStr(v);
 /** 時刻 'HH:MM'。項目が無い（古いレコード）・null も可 */
+/** 項目が無い（古いレコード）・null も可 */
+const isOptStr = (v: unknown): boolean => v === undefined || v === null || isStr(v);
 const isOptTime = (v: unknown): boolean => v === undefined || v === null || (isStr(v) && /^([01]\d|2[0-3]):[0-5]\d$/.test(v));
 
 const CHECKS: Record<Collection, (r: Rec) => boolean> = {
@@ -27,7 +29,7 @@ const CHECKS: Record<Collection, (r: Rec) => boolean> = {
   notes: (r) =>
     (NOTE_CATEGORIES as unknown[]).includes(r.category) &&
     isStr(r.text) && isStrOrNull(r.date) && isStrOrNull(r.endDate) && isBool(r.done) && isStr(r.createdAt) &&
-    isOptTime(r.timeStart) && isOptTime(r.timeEnd),
+    isOptTime(r.timeStart) && isOptTime(r.timeEnd) && isOptStr(r.person),
 };
 
 export function isRecord(collection: Collection, value: unknown): boolean {

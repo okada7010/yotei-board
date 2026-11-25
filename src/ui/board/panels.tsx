@@ -103,6 +103,7 @@ export function NotesPanel({ category, date, onEdit, children }: { category: Not
             <button type="button" className="note-item" onClick={() => onEdit(n)}>
               {noteWhenText(n) && <span className="note-date">{noteWhenText(n)}</span>}
               <span className="note-text">{n.text}</span>
+              {n.person && <span className="note-person">{n.person}</span>}
               {category === 'トラブル' && <span className="trouble-dot" aria-label="発生中" />}
             </button>
           </li>
@@ -155,6 +156,7 @@ export function EventPanel({ date, todayStr, onEditNote, onEditVehicle }: { date
             <button type="button" className="event-item" onClick={() => open(e)}>
               {noteWhenText(e) && <span className="note-date">{noteWhenText(e)}</span>}
               <span className="note-text">{e.text}</span>
+              {e.person && <span className="note-person">{e.person}</span>}
             </button>
           </li>
         ))}

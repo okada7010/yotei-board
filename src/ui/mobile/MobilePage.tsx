@@ -40,6 +40,7 @@ export function MobilePage({ navigate }: { navigate: (p: Route) => void }) {
           <button key={n.id} type="button" className="m-line" onClick={() => setNote({ category, note: n })}>
             {noteWhenText(n) && <span className="note-date">{noteWhenText(n)}</span>}
             <span>{n.text}</span>
+            {n.person && <span className="note-person">{n.person}</span>}
             {category === 'トラブル' && <span className="trouble-dot" />}
           </button>
         ))}
@@ -132,6 +133,7 @@ export function MobilePage({ navigate }: { navigate: (p: Route) => void }) {
           >
             {noteWhenText(e) && <span className="note-date">{noteWhenText(e)}</span>}
             <span>{e.text}</span>
+            {e.person && <span className="note-person">{e.person}</span>}
           </button>
         ))}
       </section>
